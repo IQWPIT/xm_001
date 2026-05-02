@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>商品图片相似检索</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #1b1f24;
+      --muted: #65707f;
+      --line: #d9dee7;
+      --accent: #1876d1;
+      --accent-dark: #10599f;
+      --good: #147a4d;
+      --shadow: 0 10px 30px rgba(24, 32, 44, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 650;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(320px, 430px) 1fr;
+      gap: 18px;
+      padding: 18px;
+      max-width: 1480px;
+      margin: 0 auto;
+    }
+    main[hidden] { display: none; }
+    .import-view {
+      grid-template-columns: minmax(320px, 620px);
+      justify-content: center;
+    }
+    section { min-width: 0; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .controls {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+    .nav {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .nav button {
+      min-height: 34px;
+      background: #e9edf4;
+      color: var(--ink);
+    }
+    .nav button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-transform: uppercase;
+    }
+    input, textarea {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+    }
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+    }
+    input[type="file"] { padding: 7px; }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font-weight: 650;
+    }
+    .toggle-row input {
+      width: 18px;
+      min-height: 18px;
+      margin: 0;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 14px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-dark); }
+    button.secondary {
+      background: #e9edf4;
+      color: var(--ink);
+    }
+    button.secondary:hover { background: #dce3ee; }
+    .preview-frame {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .preview-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .preview-empty, .status, .empty { color: var(--muted); }
+    .status { min-height: 22px; }
+    .status.ok { color: var(--good); }
+    .status.err { color: #b42318; }
+    .import-progress-box {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .import-counts {
+      color: var(--muted);
+      font-size: 16px;
+      font-weight: 650;
+      line-height: 1.45;
+    }
+    .summary {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      flex-wrap: wrap;
+      color: var(--muted);
+    }
+    .summary strong { color: var(--ink); }
+    .results {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+      padding: 14px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-width: 0;
+    }
+    .thumb {
+      aspect-ratio: 1 / 1;
+      background: #f2f4f7;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .card-body {
+      padding: 10px;
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+    .sku {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+    .meta {
+      color: var(--muted);
+      display: grid;
+      gap: 4px;
+    }
+    .score {
+      color: var(--good);
+      font-weight: 700;
+    }
+    .link {
+      color: var(--accent);
+      overflow-wrap: anywhere;
+      text-decoration: none;
+    }
+    .empty {
+      padding: 60px 18px;
+      text-align: center;
+      grid-column: 1 / -1;
+    }
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr;
+        padding: 12px;
+      }
+      header { padding: 14px 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>商品图片相似检索</h1>
+    <nav class="nav" aria-label="页面">
+      <button id="showSearchBtn" class="active" type="button">搜图</button>
+      <button id="showImportBtn" type="button">数据导入</button>
+    </nav>
+  </header>
+  <main id="searchView">
+    <section class="panel controls">
+      <label>
+        类目
+        <input id="category" list="category-list" value="MLM194295" autocomplete="off">
+        <datalist id="category-list"></datalist>
+      </label>
+      <label class="toggle-row">
+        <input id="globalSearch" type="checkbox">
+        全局搜索
+      </label>
+      <div class="hint">全局搜索不按类目过滤，只返回相似度高于阈值的商品。</div>
+      <label>
+        上传图片
+        <input id="file" type="file" accept="image/*">
+      </label>
+      <label>
+        或输入图片 URL
+        <input id="url" type="url" placeholder="https://...">
+      </label>
+      <div class="row">
+        <label>
+          图片召回数
+          <input id="imageLimit" type="number" min="1" max="500" value="100">
+        </label>
+        <label>
+          商品返回数
+          <input id="productLimit" type="number" min="1" max="100" value="20">
+        </label>
+      </div>
+      <label>
+        相似度阈值
+        <input id="scoreThreshold" type="number" min="0" max="1" step="0.01" value="0.70">
+      </label>
+      <div class="actions">
+        <button id="searchBtn" type="button">搜图</button>
+        <button id="clearBtn" class="secondary" type="button">清空</button>
+      </div>
+      <div id="status" class="status"></div>
+      <div class="preview-frame" id="previewFrame">
+        <span class="preview-empty">图片预览</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="summary" id="summary">
+        <span>等待检索</span>
+      </div>
+      <div class="results" id="results">
+        <div class="empty">上传图片或粘贴图片 URL 后开始检索。</div>
+      </div>
+    </section>
+  </main>
+
+  <main id="importView" class="import-view" hidden>
+    <section class="panel controls">
+      <label>
+        导入类目
+        <textarea id="importCategory" autocomplete="off" placeholder="多个类目可用换行、逗号或空格分隔">MLM2789</textarea>
+      </label>
+      <div class="row">
+        <label>
+          站点
+          <input id="importSite" value="ml_mx" autocomplete="off">
+        </label>
+        <label>
+          限制数量
+          <input id="importLimit" type="number" min="1" placeholder="不限制">
+        </label>
+      </div>
+      <div class="actions">
+        <button id="importBtn" type="button">导入并建索引</button>
+        <button id="stopImportBtn" class="secondary" type="button">终止任务</button>
+        <button id="clearImportBtn" class="secondary" type="button">清除进度</button>
+      </div>
+      <div class="import-progress-box">
+        <div id="importStatus" class="status">等待导入任务</div>
+        <div id="importCounts" class="import-counts">Mongo - / Qdrant -</div>
+      </div>
+      <div class="hint">导入会先写入 Mongo，再提取图片特征写入 Qdrant。刷新页面后会继续显示最近一次任务进度。</div>
+    </section>
+  </main>
+
+  <script>
+    const fileInput = document.getElementById("file");
+    const urlInput = document.getElementById("url");
+    const categoryInput = document.getElementById("category");
+    const globalInput = document.getElementById("globalSearch");
+    const imageLimitInput = document.getElementById("imageLimit");
+    const productLimitInput = document.getElementById("productLimit");
+    const scoreThresholdInput = document.getElementById("scoreThreshold");
+    const importCategoryInput = document.getElementById("importCategory");
+    const importSiteInput = document.getElementById("importSite");
+    const importLimitInput = document.getElementById("importLimit");
+    const importStatusEl = document.getElementById("importStatus");
+    const importCountsEl = document.getElementById("importCounts");
+    const searchView = document.getElementById("searchView");
+    const importView = document.getElementById("importView");
+    const showSearchBtn = document.getElementById("showSearchBtn");
+    const showImportBtn = document.getElementById("showImportBtn");
+    const previewFrame = document.getElementById("previewFrame");
+    const statusEl = document.getElementById("status");
+    const summaryEl = document.getElementById("summary");
+    const resultsEl = document.getElementById("results");
+    const importStorageKey = "productImageSearch.importJob";
+    const viewStorageKey = "productImageSearch.activeView";
+
+    function setView(name) {
+      const isImport = name === "import";
+      searchView.hidden = isImport;
+      importView.hidden = !isImport;
+      showSearchBtn.classList.toggle("active", !isImport);
+      showImportBtn.classList.toggle("active", isImport);
+      localStorage.setItem(viewStorageKey, isImport ? "import" : "search");
+    }
+
+    function setStatus(text, kind = "") {
+      statusEl.textContent = text;
+      statusEl.className = `status ${kind}`;
+    }
+
+    function setImportStatus(text, kind = "") {
+      importStatusEl.textContent = text;
+      importStatusEl.className = `status ${kind}`;
+    }
+
+    function setImportProgress({ text, kind = "", mongoCount = null, qdrantCount = null }) {
+      setImportStatus(text || "等待导入任务", kind);
+      const mongo = mongoCount !== null && mongoCount !== undefined && mongoCount !== "" && Number.isFinite(Number(mongoCount))
+        ? Number(mongoCount)
+        : null;
+      const qdrant = qdrantCount !== null && qdrantCount !== undefined && qdrantCount !== "" && Number.isFinite(Number(qdrantCount))
+        ? Number(qdrantCount)
+        : null;
+      importCountsEl.textContent = `Mongo ${mongo ?? "-"} / Qdrant ${qdrant ?? "-"}`;
+    }
+
+    function saveImportState(state) {
+      localStorage.setItem(importStorageKey, JSON.stringify(state));
+    }
+
+    function loadImportState() {
+      try {
+        return JSON.parse(localStorage.getItem(importStorageKey) || "null");
+      } catch {
+        return null;
+      }
+    }
+
+    function clearImportState() {
+      localStorage.removeItem(importStorageKey);
+    }
+
+    function setPreview(src) {
+      previewFrame.innerHTML = "";
+      if (!src) {
+        const empty = document.createElement("span");
+        empty.className = "preview-empty";
+        empty.textContent = "图片预览";
+        previewFrame.appendChild(empty);
+        return;
+      }
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = "query image";
+      previewFrame.appendChild(img);
+    }
+
+    function imageUrlFor(item) {
+      const best = item.best_image || {};
+      const product = item.product || {};
+      return best.image_url || product.image_url || product.pic_url || "";
+    }
+
+    function renderResults(data) {
+      const scope = data.global_search ? "全局" : data.category_id;
+      summaryEl.innerHTML = `
+        <span>范围 <strong>${escapeHtml(scope)}</strong></span>
+        <span>图片命中 <strong>${data.image_hits}</strong></span>
+        <span>商品返回 <strong>${data.products.length}</strong></span>
+        <span>阈值 <strong>${escapeHtml(data.score_threshold ?? "-")}</strong></span>
+      `;
+      resultsEl.innerHTML = "";
+      if (!data.products.length) {
+        resultsEl.innerHTML = '<div class="empty">没有商品达到当前相似度阈值。</div>';
+        return;
+      }
+      for (const item of data.products) {
+        const product = item.product || {};
+        const best = item.best_image || {};
+        const imgUrl = imageUrlFor(item);
+        const card = document.createElement("article");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="thumb">${imgUrl ? `<img src="${escapeAttr(imgUrl)}" alt="">` : "无图片"}</div>
+          <div class="card-body">
+            <div class="sku">${escapeHtml(item.sku_id)}</div>
+            <div class="score">相似度 ${Number(item.score).toFixed(6)}</div>
+            <div class="meta">
+              <span>类目: ${escapeHtml(product.category_id ?? best.category_id ?? "-")}</span>
+              <span>品牌: ${escapeHtml(product.brand ?? "-")}</span>
+              <span>价格: ${escapeHtml(product.active_price ?? best.active_price ?? "-")}</span>
+              <span>订单: ${escapeHtml(product.total_order ?? best.total_order ?? "-")}</span>
+              <span>站点: ${escapeHtml(product.site ?? best.site ?? "-")}</span>
+            </div>
+            ${imgUrl ? `<a class="link" href="${escapeAttr(imgUrl)}" target="_blank" rel="noreferrer">${escapeHtml(imgUrl)}</a>` : ""}
+          </div>
+        `;
+        resultsEl.appendChild(card);
+      }
+    }
+
+    async function search() {
+      const category = categoryInput.value.trim();
+      const isGlobal = globalInput.checked;
+      if (!category && !isGlobal) {
+        setStatus("请输入类目，或开启全局搜索。", "err");
+        return;
+      }
+
+      const params = new URLSearchParams({
+        image_limit: imageLimitInput.value || "100",
+        product_limit: productLimitInput.value || "20",
+        global_search: isGlobal ? "true" : "false"
+      });
+      if (!isGlobal) {
+        params.set("category_id", category);
+      }
+      if (scoreThresholdInput.value !== "") {
+        params.set("score_threshold", scoreThresholdInput.value);
+      }
+
+      const file = fileInput.files[0];
+      const url = urlInput.value.trim();
+      let endpoint = "";
+      let options = { method: "POST" };
+
+      if (file) {
+        const body = new FormData();
+        body.append("file", file);
+        endpoint = `/search?${params.toString()}`;
+        options.body = body;
+      } else if (url) {
+        params.set("url", url);
+        endpoint = `/search-url?${params.toString()}`;
+      } else {
+        setStatus("请选择图片，或输入图片 URL。", "err");
+        return;
+      }
+
+      setStatus("正在检索...");
+      resultsEl.innerHTML = '<div class="empty">正在提取图片特征并检索。</div>';
+      try {
+        const resp = await fetch(endpoint, options);
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.detail || resp.statusText);
+        }
+        renderResults(data);
+        setStatus("检索完成。", "ok");
+      } catch (err) {
+        setStatus(`检索失败: ${err.message}`, "err");
+      }
+    }
+
+    async function startImport() {
+      const categoryText = importCategoryInput.value.trim();
+      const categories = parseCategoryIds(categoryText);
+      const site = importSiteInput.value.trim() || "ml_mx";
+      if (!categories.length) {
+        setImportProgress({ text: "请输入要导入的类目 ID。", kind: "err" });
+        return;
+      }
+      const params = new URLSearchParams({
+        category_ids: categories.join(","),
+        site,
+        import_batch_size: "500",
+        index_batch_size: "32",
+        skip_existing: "true"
+      });
+      if (importLimitInput.value) {
+        params.set("limit", importLimitInput.value);
+      }
+      setImportProgress({ text: "任务提交中..." });
+      try {
+        const resp = await fetch(`/import-categories?${params.toString()}`, { method: "POST" });
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.detail || resp.statusText);
+        }
+        const jobs = data.jobs || [];
+        if (!jobs.length) {
+          throw new Error("没有可提交的类目。");
+        }
+        saveImportState({
+          job_id: jobs[0].job_id,
+          job_ids: jobs.map((job) => job.job_id),
+          category_id: jobs[0].category_id,
+          category_ids: jobs.map((job) => job.category_id),
+          site,
+          started_at: new Date().toISOString()
+        });
+        setImportProgress({ text: `已提交 ${jobs.length} 个类目，按 sku_id 去重。` });
+        pollImportBatch(jobs.map((job) => job.job_id), site);
+      } catch (err) {
+        setImportProgress({ text: `提交失败: ${err.message}`, kind: "err" });
+      }
+    }
+
+    function parseCategoryIds(text) {
+      return Array.from(new Set(text.split(/[\s,，;；]+/).map((item) => item.trim()).filter(Boolean)));
+    }
+
+    async function stopImport() {
+      const saved = loadImportState();
+      const category = (importCategoryInput.value.trim() || saved?.category_id || "").trim();
+      const site = (importSiteInput.value.trim() || saved?.site || "ml_mx").trim();
+      if (!category) {
+        setImportProgress({ text: "请输入要终止的类目 ID。", kind: "err" });
+        return;
+      }
+
+      setImportProgress({
+        text: "正在请求终止...",
+        mongoCount: saved?.mongo_count,
+        qdrantCount: saved?.qdrant_count
+      });
+      try {
+        if (saved?.job_id) {
+          await fetch(`/import-category/${saved.job_id}/cancel`, { method: "POST" });
+        }
+        const params = new URLSearchParams({ category_id: category, site });
+        const resp = await fetch(`/stop-category?${params.toString()}`, { method: "POST" });
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.detail || resp.statusText);
+        }
+        saveImportState({
+          job_id: saved?.job_id,
+          category_id: category,
+          site,
+          status: "stopped",
+          mongo_count: data.mongo_count,
+          qdrant_count: data.qdrant_count,
+          updated_at: new Date().toISOString()
+        });
+        const stopped = data.stopped_processes?.length || 0;
+        setImportProgress({
+          text: `已请求终止。停止进程 ${stopped} 个`,
+          kind: "ok",
+          mongoCount: data.mongo_count,
+          qdrantCount: data.qdrant_count
+        });
+      } catch (err) {
+        setImportProgress({ text: `终止失败: ${err.message}`, kind: "err" });
+      }
+    }
+
+    async function pollImport(jobId, category, site) {
+      try {
+        const resp = await fetch(`/import-category/${jobId}`);
+        const job = await resp.json();
+        if (!resp.ok) {
+          if (resp.status === 404) {
+            await recoverMissingJob(category, site);
+            return;
+          }
+          throw new Error(job.detail || resp.statusText);
+        }
+        saveImportState({
+          job_id: jobId,
+          category_id: job.category_id || category,
+          site: job.site || site,
+          status: job.status,
+          stage: job.stage,
+          mongo_count: job.mongo_count,
+          qdrant_count: job.qdrant_count,
+          updated_at: new Date().toISOString()
+        });
+        renderImportJob(job);
+        if (job.status === "completed") {
+          refreshCategories();
+          return;
+        }
+        if (job.status === "failed") {
+          return;
+        }
+        setTimeout(() => pollImport(jobId, category, site), 5000);
+      } catch (err) {
+        await renderCategoryFallback(category, site, `正在按类目刷新数量，任务状态读取失败: ${err.message}`);
+        setTimeout(() => pollImport(jobId, category, site), 5000);
+      }
+    }
+
+    async function pollImportBatch(jobIds, site) {
+      const jobs = [];
+      for (const jobId of jobIds) {
+        try {
+          const resp = await fetch(`/import-category/${jobId}`);
+          const job = await resp.json();
+          if (resp.ok) {
+            jobs.push(job);
+          }
+        } catch {
+          // Skip missing job status; category fallback handles old single jobs.
+        }
+      }
+      if (!jobs.length) {
+        setImportProgress({ text: "批量任务状态暂时不可用。", kind: "err" });
+        return;
+      }
+      const done = jobs.filter((job) => ["completed", "failed", "cancelled"].includes(job.status)).length;
+      const active = jobs.find((job) => !["completed", "failed", "cancelled"].includes(job.status)) || jobs[jobs.length - 1];
+      saveImportState({
+        job_id: active.job_id,
+        job_ids: jobIds,
+        category_id: active.category_id,
+        category_ids: jobs.map((job) => job.category_id),
+        site,
+        status: active.status,
+        mongo_count: active.mongo_count,
+        qdrant_count: active.qdrant_count,
+        updated_at: new Date().toISOString()
+      });
+      setImportProgress({
+        text: `批量导入 ${done}/${jobs.length}：${active.category_id} ${active.stage}，按 sku_id 去重`,
+        kind: done === jobs.length ? "ok" : "",
+        mongoCount: active.mongo_count,
+        qdrantCount: active.qdrant_count
+      });
+      if (done < jobs.length) {
+        setTimeout(() => pollImportBatch(jobIds, site), 5000);
+      } else {
+        refreshCategories();
+      }
+    }
+
+    async function recoverMissingJob(category, site) {
+      try {
+        const resp = await fetch("/import-category-latest");
+        const job = await resp.json();
+        if (
+          resp.ok &&
+          job.status &&
+          job.status !== "empty" &&
+          job.category_id === category &&
+          (job.site || "ml_mx") === (site || "ml_mx")
+        ) {
+          saveImportState({
+            job_id: job.job_id,
+            category_id: job.category_id,
+            site: job.site,
+            status: job.status
+          });
+          renderImportJob(job);
+          if (job.status !== "completed" && job.status !== "failed") {
+            setTimeout(() => pollImport(job.job_id, job.category_id, job.site || "ml_mx"), 5000);
+          }
+          return;
+        }
+      } catch {
+        // Fall back to category counts below.
+      }
+
+      saveImportState({
+        category_id: category,
+        site: site || "ml_mx",
+        status: "category_polling",
+        updated_at: new Date().toISOString()
+      });
+      await pollCategoryStatus(category, site);
+    }
+
+    async function pollCategoryStatus(category, site) {
+      await renderCategoryFallback(category, site, "正在按类目刷新数量");
+      setTimeout(() => pollCategoryStatus(category, site), 5000);
+    }
+
+    function renderImportJob(job) {
+      const counts = `Mongo ${job.mongo_count ?? "-"} / Qdrant ${job.qdrant_count ?? "-"}`;
+      if (job.status === "completed") {
+        setImportProgress({
+          text: `完成：${counts}`,
+          kind: "ok",
+          mongoCount: job.mongo_count,
+          qdrantCount: job.qdrant_count
+        });
+        return;
+      }
+      if (job.status === "failed") {
+        setImportProgress({
+          text: `失败：${job.error || job.message}，${counts}`,
+          kind: "err",
+          mongoCount: job.mongo_count,
+          qdrantCount: job.qdrant_count
+        });
+        return;
+      }
+      const text = `${job.stage}：${job.message}`;
+      setImportProgress({
+        text,
+        mongoCount: job.mongo_count,
+        qdrantCount: job.qdrant_count
+      });
+      if (job.mongo_count == null || job.qdrant_count == null) {
+        refreshImportCounts(job.category_id, job.site || "ml_mx", text);
+      }
+    }
+
+    async function refreshImportCounts(category, site, text) {
+      if (!category) {
+        return;
+      }
+      try {
+        const params = new URLSearchParams({ category_id: category, site: site || "ml_mx" });
+        const resp = await fetch(`/category-status?${params.toString()}`);
+        const data = await resp.json();
+        if (!resp.ok) {
+          return;
+        }
+        setImportProgress({
+          text,
+          mongoCount: data.mongo_count,
+          qdrantCount: data.qdrant_count
+        });
+      } catch {
+        // Keep the current status if live count fallback fails.
+      }
+    }
+
+    async function restoreImportProgress() {
+      const saved = loadImportState();
+      if (saved?.job_ids?.length) {
+        importCategoryInput.value = (saved.category_ids || [saved.category_id]).filter(Boolean).join("\n");
+        importSiteInput.value = saved.site || importSiteInput.value;
+        pollImportBatch(saved.job_ids, saved.site || "ml_mx");
+        return;
+      }
+      if (saved?.status === "category_polling") {
+        importCategoryInput.value = saved.category_id || importCategoryInput.value;
+        importSiteInput.value = saved.site || importSiteInput.value;
+        pollCategoryStatus(saved.category_id, saved.site || "ml_mx");
+        return;
+      }
+      if (saved?.job_id) {
+        importCategoryInput.value = saved.category_id || importCategoryInput.value;
+        importSiteInput.value = saved.site || importSiteInput.value;
+        setImportProgress({
+          text: "正在恢复上次导入进度...",
+          mongoCount: saved.mongo_count,
+          qdrantCount: saved.qdrant_count
+        });
+        pollImport(saved.job_id, saved.category_id, saved.site || "ml_mx");
+        return;
+      }
+
+      try {
+        const resp = await fetch("/import-category-latest");
+        const job = await resp.json();
+        if (job.status && job.status !== "empty") {
+          saveImportState({
+            job_id: job.job_id,
+            category_id: job.category_id,
+            site: job.site,
+            status: job.status
+          });
+          importCategoryInput.value = job.category_id || importCategoryInput.value;
+          importSiteInput.value = job.site || importSiteInput.value;
+          renderImportJob(job);
+          if (job.status !== "completed" && job.status !== "failed") {
+            pollImport(job.job_id, job.category_id, job.site || "ml_mx");
+          }
+        }
+      } catch {
+        // No import job to restore.
+      }
+    }
+
+    async function renderCategoryFallback(category, site, prefix) {
+      if (!category) {
+        setImportProgress({ text: prefix, kind: "err" });
+        return;
+      }
+      try {
+        const params = new URLSearchParams({ category_id: category, site: site || "ml_mx" });
+        const resp = await fetch(`/category-status?${params.toString()}`);
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.detail || resp.statusText);
+        }
+        setImportProgress({
+          text: prefix,
+          mongoCount: data.mongo_count,
+          qdrantCount: data.qdrant_count
+        });
+      } catch (err) {
+        setImportProgress({ text: `${prefix}。数量读取也失败: ${err.message}`, kind: "err" });
+      }
+    }
+
+    function refreshCategories() {
+      fetch("/categories")
+        .then((resp) => resp.json())
+        .then((data) => {
+          const list = document.getElementById("category-list");
+          list.innerHTML = "";
+          for (const category of data.categories || []) {
+            const option = document.createElement("option");
+            option.value = category;
+            list.appendChild(option);
+          }
+        })
+        .catch(() => {});
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value);
+    }
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      if (file) {
+        urlInput.value = "";
+        setPreview(URL.createObjectURL(file));
+      }
+    });
+
+    urlInput.addEventListener("input", () => {
+      if (urlInput.value.trim()) {
+        fileInput.value = "";
+        setPreview(urlInput.value.trim());
+      }
+    });
+
+    globalInput.addEventListener("change", () => {
+      categoryInput.disabled = globalInput.checked;
+    });
+
+    document.getElementById("searchBtn").addEventListener("click", search);
+    showSearchBtn.addEventListener("click", () => setView("search"));
+    showImportBtn.addEventListener("click", () => setView("import"));
+    document.getElementById("importBtn").addEventListener("click", startImport);
+    document.getElementById("stopImportBtn").addEventListener("click", stopImport);
+    document.getElementById("clearImportBtn").addEventListener("click", () => {
+      clearImportState();
+      setImportProgress({ text: "等待导入任务" });
+    });
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      fileInput.value = "";
+      urlInput.value = "";
+      globalInput.checked = false;
+      categoryInput.disabled = false;
+      setPreview("");
+      setStatus("");
+      summaryEl.innerHTML = "<span>等待检索</span>";
+      resultsEl.innerHTML = '<div class="empty">上传图片或粘贴图片 URL 后开始检索。</div>';
+    });
+
+    refreshCategories();
+    setView(localStorage.getItem(viewStorageKey) === "import" ? "import" : "search");
+    restoreImportProgress();
+  </script>
+</body>
+</html>
