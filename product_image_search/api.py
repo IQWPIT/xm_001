@@ -95,7 +95,7 @@ def import_categories_status(job_ids: str = Query(..., min_length=1)):
     jobs = import_job_manager.get_many(ids)
     done_statuses = {"completed", "failed", "cancelled"}
     done_count = sum(1 for job in jobs if job["status"] in done_statuses)
-    active_job = next((job for job in jobs if job["status"] not in done_statuses), jobs[-1] if jobs else None)
+    active_job = next((job for job in jobs if job["status"] not in done_statuses), None)
     return {
         "job_count": len(jobs),
         "done_count": done_count,
@@ -150,6 +150,20 @@ def stop_category(
 @app.get("/import-category-latest")
 def import_category_latest():
     return import_job_manager.latest() or {"status": "empty"}
+
+
+@app.get("/import-jobs")
+def import_jobs():
+    jobs = import_job_manager.list_jobs()
+    return {
+        "job_count": len(jobs),
+        "jobs": jobs,
+    }
+
+
+@app.post("/import-jobs/clear-finished")
+def import_jobs_clear_finished():
+    return {"cleared": import_job_manager.clear_finished()}
 
 
 @app.get("/category-status")

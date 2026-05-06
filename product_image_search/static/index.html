@@ -383,6 +383,7 @@
       <div class="actions">
         <button id="importBtn" type="button">导入并建索引</button>
         <button id="stopImportBtn" class="secondary" type="button">终止任务</button>
+        <button id="refreshImportBtn" class="secondary" type="button">刷新任务</button>
         <button id="clearImportBtn" class="secondary" type="button">清除进度</button>
       </div>
       <div class="import-progress-box">
@@ -762,6 +763,49 @@
       }
     }
 
+    async function refreshImportJobs() {
+      try {
+        const resp = await fetch("/import-jobs");
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.detail || resp.statusText);
+        }
+        const jobs = data.jobs || [];
+        renderImportTasks(jobs);
+        const activeJobs = jobs.filter((job) => !["completed", "failed", "cancelled"].includes(job.status));
+        const active = activeJobs[0] || jobs[jobs.length - 1];
+        if (!active) {
+          setImportProgress({ text: "暂无导入任务" });
+          return;
+        }
+        setImportProgress({
+          text: activeJobs.length ? `当前运行/排队任务 ${activeJobs.length} 个：${active.category_id} ${active.stage}` : "所有导入任务已结束",
+          kind: activeJobs.length ? "" : "ok",
+          mongoCount: active.mongo_count,
+          qdrantCount: active.qdrant_count
+        });
+        if (activeJobs.length) {
+          saveImportState({
+            job_id: active.job_id,
+            job_ids: activeJobs.map((job) => job.job_id),
+            category_id: active.category_id,
+            category_ids: activeJobs.map((job) => job.category_id),
+            site: active.site || importSiteInput.value.trim() || "ml_mx",
+            status: active.status,
+            mongo_count: active.mongo_count,
+            qdrant_count: active.qdrant_count,
+            updated_at: new Date().toISOString()
+          });
+          setImportButtons(true);
+          setTimeout(() => refreshImportJobs(), 5000);
+        } else {
+          setImportButtons(false);
+        }
+      } catch (err) {
+        setImportProgress({ text: `刷新任务失败: ${err.message}`, kind: "err" });
+      }
+    }
+
     async function fetchBatchJobs(jobIds) {
       try {
         const params = new URLSearchParams({ job_ids: jobIds.join(",") });
@@ -1031,11 +1075,13 @@
     showImportBtn.addEventListener("click", () => setView("import"));
     document.getElementById("importBtn").addEventListener("click", startImport);
     document.getElementById("stopImportBtn").addEventListener("click", stopImport);
+    document.getElementById("refreshImportBtn").addEventListener("click", refreshImportJobs);
     document.getElementById("clearImportBtn").addEventListener("click", () => {
       clearImportState();
       setImportProgress({ text: "等待导入任务" });
       setImportButtons(false);
       renderImportTasks([]);
+      fetch("/import-jobs/clear-finished", { method: "POST" }).catch(() => {});
     });
     document.getElementById("clearBtn").addEventListener("click", () => {
       fileInput.value = "";
@@ -1052,6 +1098,7 @@
     refreshCategories();
     setView(localStorage.getItem(viewStorageKey) === "import" ? "import" : "search");
     restoreImportProgress();
+    refreshImportJobs();
   </script>
 </body>
 </html>

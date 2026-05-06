@@ -17,8 +17,10 @@ from product_image_search.qdrant_store import QdrantImageStore
 
 
 class ImportJobManager:
+    done_statuses = {"completed", "failed", "cancelled"}
+
     def __init__(self):
-        self._executor = ThreadPoolExecutor(max_workers=1)
+        self._executor = ThreadPoolExecutor(max_workers=2)
         self._lock = threading.Lock()
         self._jobs: dict[str, dict[str, Any]] = {}
         self._cancel_events: dict[str, threading.Event] = {}
@@ -32,6 +34,15 @@ class ImportJobManager:
         limit: int | None = None,
         skip_existing: bool = True,
     ) -> dict[str, Any]:
+        category_id = category_id.strip()
+        site = site.strip()
+        with self._lock:
+            existing = self._active_job_for_locked(category_id=category_id, site=site)
+            if existing is not None:
+                job = existing.copy()
+                job["message"] = "Existing queued/running import job reused."
+                return job
+
         job_id = str(uuid.uuid4())
         job = {
             "job_id": job_id,
@@ -106,6 +117,17 @@ class ImportJobManager:
                 jobs.append(job)
         return jobs
 
+    def list_jobs(self) -> list[dict[str, Any]]:
+        with self._lock:
+            snapshots = [(job_id, job.copy()) for job_id, job in self._jobs.items()]
+        jobs = []
+        for job_id, snapshot in snapshots:
+            job = self._with_live_counts(job_id, snapshot)
+            if job is not None:
+                jobs.append(job)
+        jobs.sort(key=lambda item: item.get("started_at") or "")
+        return jobs
+
     def latest(self) -> dict[str, Any] | None:
         with self._lock:
             if not self._jobs:
@@ -148,9 +170,33 @@ class ImportJobManager:
                 jobs.append(job)
         return jobs
 
+    def clear_finished(self) -> int:
+        with self._lock:
+            finished_ids = [
+                job_id
+                for job_id, job in self._jobs.items()
+                if job.get("status") in self.done_statuses
+            ]
+            for job_id in finished_ids:
+                self._jobs.pop(job_id, None)
+                self._cancel_events.pop(job_id, None)
+        return len(finished_ids)
+
     def _patch(self, job_id: str, **updates) -> None:
         with self._lock:
-            self._jobs[job_id].update(updates)
+            job = self._jobs.get(job_id)
+            if job is not None:
+                job.update(updates)
+
+    def _active_job_for_locked(self, category_id: str, site: str) -> dict[str, Any] | None:
+        for job in reversed(self._jobs.values()):
+            if job.get("category_id") != category_id:
+                continue
+            if job.get("site") != site:
+                continue
+            if job.get("status") not in self.done_statuses:
+                return job
+        return None
 
     def _with_live_counts(self, job_id: str, snapshot: dict[str, Any] | None) -> dict[str, Any] | None:
         if snapshot is None:

@@ -290,6 +290,7 @@ print(client.count(collection_name='product_image_vectors', count_filter=flt, ex
 - `--skip-existing` was added to resume long indexing jobs without reprocessing SKU IDs already present in Qdrant.
 - Batch category import deduplicates at the SKU level. Mongo writes use `sku_id + site` upserts, and Qdrant `skip_existing` checks existing SKU IDs globally for the site rather than only inside the same category.
 - Batch import status can be read with `/import-categories-status?job_ids=<id1,id2>`, and a whole submitted batch can be cancelled with `/import-categories-cancel?job_ids=<id1,id2>`.
+- Import job management is hardened: the worker pool uses two workers so one stuck import does not block all queued jobs, duplicate queued/running jobs for the same `site + category_id` are reused, `/import-jobs` lists current in-memory jobs, and `/import-jobs/clear-finished` clears completed/failed/cancelled jobs.
 - `localhost` to Qdrant can time out or return 502 if proxy variables intercept it. Prefer `127.0.0.1`.
 - DINOv2-small uses whole-image features. Ad-style images, text-heavy images, and different layouts can lower similarity even for related products.
 - Searching with an image already in the index returns itself as top1. Future API work should add `exclude_sku_id` or `exclude_image_key`.
@@ -299,6 +300,7 @@ print(client.count(collection_name='product_image_vectors', count_filter=flt, ex
 - The browser UI text is Chinese. Keep the HTML file encoded as UTF-8 when editing.
 - Category import can be launched from the browser UI under the separate `数据导入` view, keeping the main search controls focused on image search. It supports single or batch category input. It runs inside the FastAPI process with one background worker. Long jobs continue while the page polls status, but will stop if the API process is restarted.
 - The browser and desktop import UIs show a per-category batch task table with category, stage, and live `Mongo / Qdrant` counts. Batch cancel requests cancel every submitted job ID; queued jobs now stop before starting.
+- The browser and desktop import UIs include a refresh task action that reads `/import-jobs`, so users can recover from stale browser/local state and see the actual backend queue.
 - Category import status shows Mongo count after SKU import and Qdrant count when entering indexing, then refreshes final counts when the job completes. Existing running jobs use the code version that was loaded when the API process started.
 - The web UI stores the latest import job in browser `localStorage`, restores polling after page refresh, and falls back to `/category-status` counts if the in-memory job is gone.
 - The web UI has a stop button. It cancels the in-process import job when possible and terminates standalone `index_products` processes matching the category ID.

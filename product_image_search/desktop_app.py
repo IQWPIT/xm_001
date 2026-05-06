@@ -113,6 +113,7 @@ class ProductImageSearchApp(tk.Tk):
         buttons.grid(row=3, column=1, sticky=tk.W, pady=10)
         ttk.Button(buttons, text="批量导入并建索引", command=self.start_import).pack(side=tk.LEFT)
         ttk.Button(buttons, text="终止当前类目", command=self.stop_import).pack(side=tk.LEFT, padx=8)
+        ttk.Button(buttons, text="刷新任务", command=self.refresh_import_jobs).pack(side=tk.LEFT)
 
         ttk.Label(parent, textvariable=self.import_status, font=("", 12, "bold")).grid(row=4, column=1, sticky=tk.W, pady=(8, 2))
         ttk.Label(parent, textvariable=self.import_counts, font=("", 14, "bold")).grid(row=5, column=1, sticky=tk.W)
@@ -232,6 +233,34 @@ class ProductImageSearchApp(tk.Tk):
         if not self.import_job_ids:
             return
         self._run_bg(self._poll_import_jobs_worker)
+
+    def refresh_import_jobs(self) -> None:
+        self._run_bg(self._refresh_import_jobs_worker)
+
+    def _refresh_import_jobs_worker(self) -> None:
+        try:
+            api = self.api_base.get().rstrip("/")
+            resp = requests.get(f"{api}/import-jobs", timeout=20)
+            resp.raise_for_status()
+            jobs = resp.json().get("jobs", [])
+            self._render_import_jobs(jobs)
+            active_jobs = [job for job in jobs if job.get("status") not in {"completed", "failed", "cancelled"}]
+            active = active_jobs[0] if active_jobs else (jobs[-1] if jobs else None)
+            if active is None:
+                self.import_status.set("暂无导入任务")
+                self.import_counts.set("Mongo - / Qdrant -")
+                return
+            self.import_job_ids = [job["job_id"] for job in active_jobs]
+            self.import_status.set(
+                f"当前运行/排队 {len(active_jobs)} 个：{active.get('category_id')} {active.get('stage')}"
+                if active_jobs
+                else "所有导入任务已结束"
+            )
+            self.import_counts.set(f"Mongo {active.get('mongo_count', '-')} / Qdrant {active.get('qdrant_count', '-')}")
+            if active_jobs:
+                self.after(5000, self.poll_import_jobs)
+        except Exception as exc:
+            self.import_status.set(f"刷新任务失败: {exc}")
 
     def _poll_import_jobs_worker(self) -> None:
         api = self.api_base.get().rstrip("/")
