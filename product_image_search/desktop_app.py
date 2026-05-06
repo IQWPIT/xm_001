@@ -21,6 +21,7 @@ class ProductImageSearchApp(tk.Tk):
         self.api_base = tk.StringVar(value=DEFAULT_API_BASE)
         self.category = tk.StringVar(value="MLM194295")
         self.global_search = tk.BooleanVar(value=False)
+        self.subject_search = tk.BooleanVar(value=False)
         self.score_threshold = tk.StringVar(value="0.70")
         self.image_limit = tk.StringVar(value="100")
         self.product_limit = tk.StringVar(value="20")
@@ -63,6 +64,7 @@ class ProductImageSearchApp(tk.Tk):
         ttk.Label(parent, text="类目").grid(row=0, column=0, sticky=tk.W, pady=4)
         ttk.Entry(parent, textvariable=self.category).grid(row=0, column=1, sticky=tk.EW, pady=4)
         ttk.Checkbutton(parent, text="全局搜索", variable=self.global_search).grid(row=1, column=1, sticky=tk.W, pady=4)
+        ttk.Checkbutton(parent, text="主体搜索（减少背景影响）", variable=self.subject_search).grid(row=1, column=1, sticky=tk.E, pady=4)
 
         ttk.Label(parent, text="本地图片").grid(row=2, column=0, sticky=tk.W, pady=4)
         file_row = ttk.Frame(parent)
@@ -152,6 +154,7 @@ class ProductImageSearchApp(tk.Tk):
                 "image_limit": self.image_limit.get() or "100",
                 "product_limit": self.product_limit.get() or "20",
                 "global_search": "true" if self.global_search.get() else "false",
+                "subject_search": "true" if self.subject_search.get() else "false",
             }
             if not self.global_search.get():
                 params["category_id"] = self.category.get().strip()

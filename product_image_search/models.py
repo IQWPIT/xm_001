@@ -25,5 +25,6 @@ class SearchResponse(BaseModel):
     category_id: str | None = None
     global_search: bool = False
     score_threshold: float | None = None
+    subject_search: bool = False
     image_hits: int
     products: list[SearchProduct]

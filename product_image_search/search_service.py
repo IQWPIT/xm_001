@@ -8,6 +8,7 @@ from product_image_search.image_io import build_minio_client, ensure_minio_bucke
 from product_image_search.models import ProductPayload, SearchProduct, SearchResponse
 from product_image_search.mongo_store import MongoProductStore
 from product_image_search.qdrant_store import QdrantImageStore
+from product_image_search.subject_crop import crop_subject
 
 
 class ImageSearchService:
@@ -28,7 +29,10 @@ class ImageSearchService:
         product_limit: int = 20,
         score_threshold: float | None = None,
         query_image_url: str | None = None,
+        subject_search: bool = False,
     ) -> SearchResponse:
+        if subject_search:
+            image = crop_subject(image)
         vector = self.embedder.encode([image])[0].tolist()
         hits = self.qdrant.search(
             vector,
@@ -60,6 +64,7 @@ class ImageSearchService:
             category_id=category_id,
             global_search=category_id is None,
             score_threshold=score_threshold,
+            subject_search=subject_search,
             image_hits=len(hits),
             products=[
                 SearchProduct(

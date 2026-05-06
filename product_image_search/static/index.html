@@ -317,6 +317,11 @@
         全局搜索
       </label>
       <div class="hint">全局搜索不按类目过滤，只返回相似度高于阈值的商品。</div>
+      <label class="toggle-row">
+        <input id="subjectSearch" type="checkbox">
+        主体搜索
+      </label>
+      <div class="hint">主体搜索会先裁剪图片中的主要商品区域，减少背景和排版对搜图的影响。</div>
       <label>
         上传图片
         <input id="file" type="file" accept="image/*">
@@ -394,6 +399,7 @@
     const urlInput = document.getElementById("url");
     const categoryInput = document.getElementById("category");
     const globalInput = document.getElementById("globalSearch");
+    const subjectInput = document.getElementById("subjectSearch");
     const imageLimitInput = document.getElementById("imageLimit");
     const productLimitInput = document.getElementById("productLimit");
     const scoreThresholdInput = document.getElementById("scoreThreshold");
@@ -492,6 +498,7 @@
         <span>图片命中 <strong>${data.image_hits}</strong></span>
         <span>商品返回 <strong>${data.products.length}</strong></span>
         <span>阈值 <strong>${escapeHtml(data.score_threshold ?? "-")}</strong></span>
+        <span>主体搜索 <strong>${data.subject_search ? "开" : "关"}</strong></span>
       `;
       resultsEl.innerHTML = "";
       if (!data.products.length) {
@@ -534,7 +541,8 @@
       const params = new URLSearchParams({
         image_limit: imageLimitInput.value || "100",
         product_limit: productLimitInput.value || "20",
-        global_search: isGlobal ? "true" : "false"
+        global_search: isGlobal ? "true" : "false",
+        subject_search: subjectInput.checked ? "true" : "false"
       });
       if (!isGlobal) {
         params.set("category_id", category);
@@ -1033,6 +1041,7 @@
       fileInput.value = "";
       urlInput.value = "";
       globalInput.checked = false;
+      subjectInput.checked = false;
       categoryInput.disabled = false;
       setPreview("");
       setStatus("");

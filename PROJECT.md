@@ -91,6 +91,7 @@ $env:no_proxy='localhost,127.0.0.1,::1'
 - `product_image_search/mongo_store.py`: local Mongo access and indexes
 - `product_image_search/qdrant_store.py`: Qdrant collection, payload indexes, search, existing SKU scan
 - `product_image_search/search_service.py`: query image -> Qdrant -> group by SKU -> Mongo details
+- `product_image_search/subject_crop.py`: query-time subject crop used by subject search to reduce background influence
 - `product_image_search/2.py`: user-provided minimal example for accessing the SKU table through `dm`
 
 ## Data Model
@@ -253,6 +254,12 @@ Global search ignores category filtering and returns only products above `score_
 curl.exe -X POST "http://127.0.0.1:8000/search-url?global_search=true&score_threshold=0.8&product_limit=20&url=https%3A%2F%2Fhttp2.mlstatic.com%2FD_NQ_NP_873813-MLM86754197062_072025-V.webp"
 ```
 
+Subject search crops the likely product subject before embedding the query image:
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/search-url?category_id=MLM2789&subject_search=true&url=https%3A%2F%2Fhttp2.mlstatic.com%2Fexample.webp"
+```
+
 ## Verification Snippets
 
 Count local Mongo category records:
@@ -288,6 +295,7 @@ print(client.count(collection_name='product_image_vectors', count_filter=flt, ex
 - Searching with an image already in the index returns itself as top1. Future API work should add `exclude_sku_id` or `exclude_image_key`.
 - The browser UI loads categories from local Mongo and supports file upload, image URL search, category mode, and global search with `score_threshold`.
 - URL image search first checks local Mongo for an exact `image_url`/`pic_url` match. If the query URL already belongs to an indexed product, that SKU is forced into the result set with score `1.0`, so products can reliably search back to themselves.
+- Search supports `subject_search=true` from the browser UI, desktop app, and API. It crops the query image's likely foreground subject before DINOv2 embedding, which reduces background, text, and ad-layout influence. Indexed product vectors remain unchanged.
 - The browser UI text is Chinese. Keep the HTML file encoded as UTF-8 when editing.
 - Category import can be launched from the browser UI under the separate `数据导入` view, keeping the main search controls focused on image search. It supports single or batch category input. It runs inside the FastAPI process with one background worker. Long jobs continue while the page polls status, but will stop if the API process is restarted.
 - The browser and desktop import UIs show a per-category batch task table with category, stage, and live `Mongo / Qdrant` counts. Batch cancel requests cancel every submitted job ID; queued jobs now stop before starting.

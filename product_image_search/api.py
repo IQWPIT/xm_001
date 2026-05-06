@@ -172,6 +172,7 @@ async def search(
     file: UploadFile = File(...),
     category_id: str | None = Query(default=None),
     global_search: bool = Query(default=False),
+    subject_search: bool = Query(default=False),
     score_threshold: float | None = Query(default=None, ge=0, le=1),
     image_limit: int = Query(default=100, ge=1, le=500),
     product_limit: int = Query(default=20, ge=1, le=100),
@@ -186,6 +187,7 @@ async def search(
         image_limit=image_limit,
         product_limit=product_limit,
         score_threshold=score_threshold,
+        subject_search=subject_search,
     )
 
 
@@ -194,6 +196,7 @@ async def search_url(
     url: str = Query(...),
     category_id: str | None = Query(default=None),
     global_search: bool = Query(default=False),
+    subject_search: bool = Query(default=False),
     score_threshold: float | None = Query(default=None, ge=0, le=1),
     image_limit: int = Query(default=100, ge=1, le=500),
     product_limit: int = Query(default=20, ge=1, le=100),
@@ -212,4 +215,5 @@ async def search_url(
         product_limit=product_limit,
         score_threshold=score_threshold,
         query_image_url=url,
+        subject_search=subject_search,
     )
