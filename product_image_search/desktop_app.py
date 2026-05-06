@@ -64,7 +64,7 @@ class ProductImageSearchApp(tk.Tk):
         ttk.Label(parent, text="类目").grid(row=0, column=0, sticky=tk.W, pady=4)
         ttk.Entry(parent, textvariable=self.category).grid(row=0, column=1, sticky=tk.EW, pady=4)
         ttk.Checkbutton(parent, text="全局搜索", variable=self.global_search).grid(row=1, column=1, sticky=tk.W, pady=4)
-        ttk.Checkbutton(parent, text="主体搜索（减少背景影响）", variable=self.subject_search).grid(row=1, column=1, sticky=tk.E, pady=4)
+        ttk.Checkbutton(parent, text="主体搜索（减少背景/人脸影响）", variable=self.subject_search).grid(row=1, column=1, sticky=tk.E, pady=4)
 
         ttk.Label(parent, text="本地图片").grid(row=2, column=0, sticky=tk.W, pady=4)
         file_row = ttk.Frame(parent)
