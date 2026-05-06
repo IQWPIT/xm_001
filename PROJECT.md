@@ -288,6 +288,7 @@ print(client.count(collection_name='product_image_vectors', count_filter=flt, ex
 
 - URL image indexing is slow because every SKU image is downloaded remotely during indexing.
 - `--skip-existing` was added to resume long indexing jobs without reprocessing SKU IDs already present in Qdrant.
+- The browser preview image is constrained inside the fixed square preview frame with absolute positioning and `object-fit: contain`, so large uploads cannot stretch the control panel.
 - Batch category import deduplicates at the SKU level. Mongo writes use `sku_id + site` upserts, and Qdrant `skip_existing` checks existing SKU IDs globally for the site rather than only inside the same category.
 - Batch import status can be read with `/import-categories-status?job_ids=<id1,id2>`, and a whole submitted batch can be cancelled with `/import-categories-cancel?job_ids=<id1,id2>`.
 - Import job management is hardened: the worker pool uses two workers so one stuck import does not block all queued jobs, duplicate queued/running jobs for the same `site + category_id` are reused, `/import-jobs` lists current in-memory jobs, and `/import-jobs/clear-finished` clears completed/failed/cancelled jobs.
