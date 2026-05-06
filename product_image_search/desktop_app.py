@@ -116,6 +116,16 @@ class ProductImageSearchApp(tk.Tk):
         ttk.Label(parent, textvariable=self.import_counts, font=("", 14, "bold")).grid(row=5, column=1, sticky=tk.W)
         ttk.Label(parent, text="多个类目可用换行、逗号、空格分隔；导入和建索引按 sku_id 去重。").grid(row=6, column=1, sticky=tk.W, pady=8)
 
+        self.import_table = ttk.Treeview(parent, columns=("category", "status", "counts"), show="headings", height=10)
+        self.import_table.heading("category", text="类目")
+        self.import_table.heading("status", text="状态")
+        self.import_table.heading("counts", text="数量")
+        self.import_table.column("category", width=180, anchor=tk.W)
+        self.import_table.column("status", width=160, anchor=tk.W)
+        self.import_table.column("counts", width=220, anchor=tk.W)
+        self.import_table.grid(row=7, column=1, sticky=tk.NSEW, pady=(8, 0))
+        parent.rowconfigure(7, weight=1)
+
     def choose_file(self) -> None:
         path = filedialog.askopenfilename(filetypes=[("图片", "*.jpg *.jpeg *.png *.webp *.bmp"), ("所有文件", "*.*")])
         if path:
@@ -210,6 +220,7 @@ class ProductImageSearchApp(tk.Tk):
             data = resp.json()
             self.import_job_ids = [job["job_id"] for job in data.get("jobs", [])]
             self.import_status.set(f"已提交 {len(self.import_job_ids)} 个类目，按 sku_id 去重")
+            self._render_import_jobs(data.get("jobs", []))
             self.after(1000, self.poll_import_jobs)
         except Exception as exc:
             self.import_status.set(f"提交失败: {exc}")
@@ -221,24 +232,51 @@ class ProductImageSearchApp(tk.Tk):
 
     def _poll_import_jobs_worker(self) -> None:
         api = self.api_base.get().rstrip("/")
-        jobs = []
-        for job_id in self.import_job_ids:
-            try:
-                resp = requests.get(f"{api}/import-category/{job_id}", timeout=15)
-                if resp.ok:
-                    jobs.append(resp.json())
-            except Exception:
-                pass
+        jobs = self._fetch_import_jobs(api, self.import_job_ids)
         if not jobs:
             self.import_status.set("暂时读取不到任务状态")
             return
 
         done = len([job for job in jobs if job.get("status") in {"completed", "failed", "cancelled"}])
         active = next((job for job in jobs if job.get("status") not in {"completed", "failed", "cancelled"}), jobs[-1])
+        self._render_import_jobs(jobs)
         self.import_status.set(f"批量导入 {done}/{len(jobs)}：{active.get('category_id')} {active.get('stage')}")
         self.import_counts.set(f"Mongo {active.get('mongo_count', '-')} / Qdrant {active.get('qdrant_count', '-')}")
         if done < len(jobs):
             self.after(5000, self.poll_import_jobs)
+
+    def _fetch_import_jobs(self, api: str, job_ids: list[str]) -> list[dict]:
+        try:
+            params = urlencode({"job_ids": ",".join(job_ids)})
+            resp = requests.get(f"{api}/import-categories-status?{params}", timeout=20)
+            if resp.ok:
+                return resp.json().get("jobs", [])
+        except Exception:
+            pass
+
+        jobs = []
+        for job_id in job_ids:
+            try:
+                resp = requests.get(f"{api}/import-category/{job_id}", timeout=15)
+                if resp.ok:
+                    jobs.append(resp.json())
+            except Exception:
+                pass
+        return jobs
+
+    def _render_import_jobs(self, jobs: list[dict]) -> None:
+        for item in self.import_table.get_children():
+            self.import_table.delete(item)
+        for job in jobs:
+            self.import_table.insert(
+                "",
+                tk.END,
+                values=(
+                    job.get("category_id", "-"),
+                    job.get("stage") or job.get("status") or "-",
+                    f"Mongo {job.get('mongo_count', '-')} / Qdrant {job.get('qdrant_count', '-')}",
+                ),
+            )
 
     def stop_import(self) -> None:
         self._run_bg(self._stop_import_worker)
@@ -246,11 +284,23 @@ class ProductImageSearchApp(tk.Tk):
     def _stop_import_worker(self) -> None:
         text = self.import_categories.get("1.0", tk.END).strip()
         categories = parse_category_ids(text)
-        if not categories:
+        if not categories and not self.import_job_ids:
             self.import_status.set("请输入要终止的类目 ID。")
             return
         try:
             api = self.api_base.get().rstrip("/")
+            if self.import_job_ids:
+                params = urlencode({"job_ids": ",".join(self.import_job_ids)})
+                resp = requests.post(f"{api}/import-categories-cancel?{params}", timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+                jobs = data.get("jobs", [])
+                self._render_import_jobs(jobs)
+                self.import_status.set(f"已请求终止 {data.get('job_count', 0)} 个任务")
+                if jobs:
+                    active = jobs[0]
+                    self.import_counts.set(f"Mongo {active.get('mongo_count', '-')} / Qdrant {active.get('qdrant_count', '-')}")
+                return
             params = urlencode({"category_id": categories[0], "site": self.import_site.get().strip() or "ml_mx"})
             resp = requests.post(f"{api}/stop-category?{params}", timeout=30)
             resp.raise_for_status()

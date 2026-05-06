@@ -184,6 +184,44 @@
       font-weight: 650;
       line-height: 1.45;
     }
+    .task-list {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .task-row {
+      display: grid;
+      grid-template-columns: minmax(110px, 1fr) minmax(90px, 120px) minmax(145px, 190px);
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      align-items: center;
+    }
+    .task-row:last-child { border-bottom: 0; }
+    .task-row.header {
+      background: #f2f5f9;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .task-category, .task-counts { overflow-wrap: anywhere; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 2px 9px;
+      background: #e9edf4;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge.running { background: #dbeafe; color: #174ea6; }
+    .badge.completed { background: #dcfce7; color: #166534; }
+    .badge.failed, .badge.cancelled { background: #fee2e2; color: #991b1b; }
     .summary {
       padding: 14px 16px;
       border-bottom: 1px solid var(--line);
@@ -346,6 +384,7 @@
         <div id="importStatus" class="status">等待导入任务</div>
         <div id="importCounts" class="import-counts">Mongo - / Qdrant -</div>
       </div>
+      <div class="task-list" id="importTaskList" hidden></div>
       <div class="hint">导入会先写入 Mongo，再提取图片特征写入 Qdrant。刷新页面后会继续显示最近一次任务进度。</div>
     </section>
   </main>
@@ -363,6 +402,7 @@
     const importLimitInput = document.getElementById("importLimit");
     const importStatusEl = document.getElementById("importStatus");
     const importCountsEl = document.getElementById("importCounts");
+    const importTaskList = document.getElementById("importTaskList");
     const searchView = document.getElementById("searchView");
     const importView = document.getElementById("importView");
     const showSearchBtn = document.getElementById("showSearchBtn");
@@ -418,6 +458,10 @@
 
     function clearImportState() {
       localStorage.removeItem(importStorageKey);
+    }
+
+    function setImportButtons(disabled) {
+      document.getElementById("importBtn").disabled = disabled;
     }
 
     function setPreview(src) {
@@ -551,6 +595,7 @@
         params.set("limit", importLimitInput.value);
       }
       setImportProgress({ text: "任务提交中..." });
+      setImportButtons(true);
       try {
         const resp = await fetch(`/import-categories?${params.toString()}`, { method: "POST" });
         const data = await resp.json();
@@ -569,10 +614,12 @@
           site,
           started_at: new Date().toISOString()
         });
+        renderImportTasks(jobs);
         setImportProgress({ text: `已提交 ${jobs.length} 个类目，按 sku_id 去重。` });
         pollImportBatch(jobs.map((job) => job.job_id), site);
       } catch (err) {
         setImportProgress({ text: `提交失败: ${err.message}`, kind: "err" });
+        setImportButtons(false);
       }
     }
 
@@ -582,7 +629,7 @@
 
     async function stopImport() {
       const saved = loadImportState();
-      const category = (importCategoryInput.value.trim() || saved?.category_id || "").trim();
+      const category = (parseCategoryIds(importCategoryInput.value)[0] || saved?.category_id || "").trim();
       const site = (importSiteInput.value.trim() || saved?.site || "ml_mx").trim();
       if (!category) {
         setImportProgress({ text: "请输入要终止的类目 ID。", kind: "err" });
@@ -595,6 +642,17 @@
         qdrantCount: saved?.qdrant_count
       });
       try {
+        if (saved?.job_ids?.length) {
+          const params = new URLSearchParams({ job_ids: saved.job_ids.join(",") });
+          const resp = await fetch(`/import-categories-cancel?${params.toString()}`, { method: "POST" });
+          const data = await resp.json();
+          if (!resp.ok) {
+            throw new Error(data.detail || resp.statusText);
+          }
+          renderImportTasks(data.jobs || []);
+          setImportProgress({ text: `已请求终止 ${data.job_count || 0} 个任务`, kind: "ok" });
+          return;
+        }
         if (saved?.job_id) {
           await fetch(`/import-category/${saved.job_id}/cancel`, { method: "POST" });
         }
@@ -662,24 +720,15 @@
     }
 
     async function pollImportBatch(jobIds, site) {
-      const jobs = [];
-      for (const jobId of jobIds) {
-        try {
-          const resp = await fetch(`/import-category/${jobId}`);
-          const job = await resp.json();
-          if (resp.ok) {
-            jobs.push(job);
-          }
-        } catch {
-          // Skip missing job status; category fallback handles old single jobs.
-        }
-      }
+      const jobs = await fetchBatchJobs(jobIds);
       if (!jobs.length) {
         setImportProgress({ text: "批量任务状态暂时不可用。", kind: "err" });
+        setImportButtons(false);
         return;
       }
       const done = jobs.filter((job) => ["completed", "failed", "cancelled"].includes(job.status)).length;
       const active = jobs.find((job) => !["completed", "failed", "cancelled"].includes(job.status)) || jobs[jobs.length - 1];
+      renderImportTasks(jobs);
       saveImportState({
         job_id: active.job_id,
         job_ids: jobIds,
@@ -700,7 +749,61 @@
       if (done < jobs.length) {
         setTimeout(() => pollImportBatch(jobIds, site), 5000);
       } else {
+        setImportButtons(false);
         refreshCategories();
+      }
+    }
+
+    async function fetchBatchJobs(jobIds) {
+      try {
+        const params = new URLSearchParams({ job_ids: jobIds.join(",") });
+        const resp = await fetch(`/import-categories-status?${params.toString()}`);
+        const data = await resp.json();
+        if (resp.ok && data.jobs) {
+          return data.jobs;
+        }
+      } catch {
+        // Fall back to per-job reads below.
+      }
+
+      const jobs = [];
+      for (const jobId of jobIds) {
+        try {
+          const resp = await fetch(`/import-category/${jobId}`);
+          const job = await resp.json();
+          if (resp.ok) {
+            jobs.push(job);
+          }
+        } catch {
+          // Ignore missing job status.
+        }
+      }
+      return jobs;
+    }
+
+    function renderImportTasks(jobs) {
+      if (!jobs || !jobs.length) {
+        importTaskList.hidden = true;
+        importTaskList.innerHTML = "";
+        return;
+      }
+      importTaskList.hidden = false;
+      importTaskList.innerHTML = `
+        <div class="task-row header">
+          <div>类目</div>
+          <div>状态</div>
+          <div>数量</div>
+        </div>
+      `;
+      for (const job of jobs) {
+        const row = document.createElement("div");
+        row.className = "task-row";
+        row.innerHTML = `
+          <div class="task-category">${escapeHtml(job.category_id || "-")}</div>
+          <div><span class="badge ${escapeAttr(job.status || "")}">${escapeHtml(job.stage || job.status || "-")}</span></div>
+          <div class="task-counts">Mongo ${escapeHtml(job.mongo_count ?? "-")} / Qdrant ${escapeHtml(job.qdrant_count ?? "-")}</div>
+        `;
+        importTaskList.appendChild(row);
       }
     }
 
@@ -802,6 +905,7 @@
       if (saved?.job_ids?.length) {
         importCategoryInput.value = (saved.category_ids || [saved.category_id]).filter(Boolean).join("\n");
         importSiteInput.value = saved.site || importSiteInput.value;
+        setImportButtons(true);
         pollImportBatch(saved.job_ids, saved.site || "ml_mx");
         return;
       }
@@ -922,6 +1026,8 @@
     document.getElementById("clearImportBtn").addEventListener("click", () => {
       clearImportState();
       setImportProgress({ text: "等待导入任务" });
+      setImportButtons(false);
+      renderImportTasks([]);
     });
     document.getElementById("clearBtn").addEventListener("click", () => {
       fileInput.value = "";

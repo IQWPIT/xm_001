@@ -89,6 +89,31 @@ def import_categories(
     }
 
 
+@app.get("/import-categories-status")
+def import_categories_status(job_ids: str = Query(..., min_length=1)):
+    ids = [item.strip() for item in re.split(r"[\s,，;；]+", job_ids) if item.strip()]
+    jobs = import_job_manager.get_many(ids)
+    done_statuses = {"completed", "failed", "cancelled"}
+    done_count = sum(1 for job in jobs if job["status"] in done_statuses)
+    active_job = next((job for job in jobs if job["status"] not in done_statuses), jobs[-1] if jobs else None)
+    return {
+        "job_count": len(jobs),
+        "done_count": done_count,
+        "active_job_id": active_job["job_id"] if active_job else None,
+        "jobs": jobs,
+    }
+
+
+@app.post("/import-categories-cancel")
+def import_categories_cancel(job_ids: str = Query(..., min_length=1)):
+    ids = [item.strip() for item in re.split(r"[\s,，;；]+", job_ids) if item.strip()]
+    jobs = import_job_manager.cancel_many(ids)
+    return {
+        "job_count": len(jobs),
+        "jobs": jobs,
+    }
+
+
 @app.get("/import-category/{job_id}")
 def import_category_status(job_id: str):
     job = import_job_manager.get(job_id)

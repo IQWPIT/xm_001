@@ -98,6 +98,14 @@ class ImportJobManager:
             snapshot = job.copy() if job else None
         return self._with_live_counts(job_id, snapshot)
 
+    def get_many(self, job_ids: list[str]) -> list[dict[str, Any]]:
+        jobs = []
+        for job_id in job_ids:
+            job = self.get(job_id)
+            if job is not None:
+                jobs.append(job)
+        return jobs
+
     def latest(self) -> dict[str, Any] | None:
         with self._lock:
             if not self._jobs:
@@ -115,14 +123,30 @@ class ImportJobManager:
             event = self._cancel_events.get(job_id)
             if event is not None:
                 event.set()
-            job.update(
-                {
-                    "cancel_requested": True,
-                    "message": "Cancel requested. Waiting for current image operation to stop.",
-                }
-            )
+            updates = {
+                "cancel_requested": True,
+                "message": "Cancel requested. Waiting for current image operation to stop.",
+            }
+            if job.get("status") == "queued":
+                updates.update(
+                    {
+                        "status": "cancelled",
+                        "stage": "cancelled",
+                        "message": "Cancelled before start.",
+                        "finished_at": now_iso(),
+                    }
+                )
+            job.update(updates)
             snapshot = job.copy()
         return self._with_live_counts(job_id, snapshot)
+
+    def cancel_many(self, job_ids: list[str]) -> list[dict[str, Any]]:
+        jobs = []
+        for job_id in job_ids:
+            job = self.cancel(job_id)
+            if job is not None:
+                jobs.append(job)
+        return jobs
 
     def _patch(self, job_id: str, **updates) -> None:
         with self._lock:
@@ -155,6 +179,17 @@ class ImportJobManager:
         cancel_event: threading.Event,
     ) -> None:
         try:
+            if cancel_event.is_set():
+                self._patch(
+                    job_id,
+                    status="cancelled",
+                    stage="cancelled",
+                    message="Cancelled before start.",
+                    mongo_count=count_mongo_products(site=site, category_id=category_id),
+                    qdrant_count=safe_count_qdrant_vectors(category_id=category_id),
+                    finished_at=now_iso(),
+                )
+                return
             self._patch(
                 job_id,
                 status="running",
